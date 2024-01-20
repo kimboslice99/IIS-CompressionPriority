@@ -1,5 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Linq;
 using System.Web;
 
 namespace CompressionPriority
@@ -14,22 +16,40 @@ namespace CompressionPriority
             HttpRequest request = app.Context.Request;
             if(request.Headers["Accept-Encoding"] != null)
             {
-                List<string> encoding = new List<string>();
-                string original_accept_encoding = request.Headers["Accept-Encoding"];
-                if (original_accept_encoding.Contains("zstd"))
-                    encoding.Add("zstd");
-                if (original_accept_encoding.Contains("br"))
-                    encoding.Add("br");
-                if (original_accept_encoding.Contains("gzip"))
-                    encoding.Add("gzip");
-                if (original_accept_encoding.Contains("deflate"))
-                    encoding.Add("deflate");
-                string reordered_accept_encoding = string.Join(", ", encoding);
+                string acceptEncoding;
+                string[] split = request.Headers["Accept-Encoding"].Split(new string[] { ", " }, StringSplitOptions.None);
+                // fix older IIS versions that pick first in list
+                Array.Reverse(split);
+
+                // rfc9110 12.4.2 compliance fix
+                // 0.000 means "not acceptable"
+
+                // we wont bother with this unless 
+                if (split.Any(s => s.Contains(";q=0")))
+                {
+                    List<string> parts = new List<string>();
+                    foreach (string part in split)
+                    {
+                        if (!part.Contains(";q="))
+                        {
+                            parts.Add(part);
+                            continue;
+                        }
+                        if (double.TryParse(part.Split('=')[1], out double value) && value != 0)
+                            parts.Add(part);
+                    }
+
+                    acceptEncoding = string.Join(", ", parts.ToArray());
+                }
+                else
+                {
+                    acceptEncoding = string.Join(", ", split);
+                }
 #if DEBUG
-                System.Diagnostics.Debug.WriteLine("[CompressionPriority]: old order = " + original_accept_encoding + " new order = " + reordered_accept_encoding);
+                System.Diagnostics.Debug.WriteLine("[CompressionPriority]: old order =[" + request.Headers["Accept-Encoding"] + "] new order =[" + acceptEncoding + ']');
 #endif
                 request.Headers.Remove("Accept-Encoding");
-                request.Headers.Add("Accept-Encoding", reordered_accept_encoding);
+                request.Headers.Add("Accept-Encoding", acceptEncoding);
             }
         }
 
@@ -38,10 +58,7 @@ namespace CompressionPriority
             context.BeginRequest += new EventHandler(Begin);
         }
 
-        public void Dispose()
-        {
-
-        }
+        public void Dispose() { }
 
         #endregion
     }

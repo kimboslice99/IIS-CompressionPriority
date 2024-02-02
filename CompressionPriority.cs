@@ -17,14 +17,15 @@ namespace CompressionPriority
             if(request.Headers["Accept-Encoding"] != null)
             {
                 string acceptEncoding;
-                string[] split = request.Headers["Accept-Encoding"].Split(new string[] { ", " }, StringSplitOptions.None);
+                string[] split = request.Headers["Accept-Encoding"].Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries)
+                                                  .Select(s => s.Trim())
+                                                  .ToArray();
                 // fix older IIS versions that pick first in list
                 Array.Reverse(split);
 
                 // rfc9110 12.4.2 compliance fix
                 // 0.000 means "not acceptable"
 
-                // we wont bother with this unless 
                 if (split.Any(s => s.Contains(";q=0")))
                 {
                     List<string> parts = new List<string>();
